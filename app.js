@@ -270,7 +270,9 @@
   let activeChaptersSubject = 'Mathematics';
   let chaptersFilter = 'all';
   let activeSettingsStageSubject = 'Mathematics';
+  let activeSettingsChapterSubject = 'Mathematics';
   let expandedChapters = {};
+  let lastDeletedChapterBackup = null;
 
   // Setup Wizard State
   let wizardData = {
@@ -387,7 +389,8 @@
     }
   }
 
-  function showToast(msg) {
+  let toastTimeout = null;
+  function showToast(msg, undoCallback = null) {
     let toast = document.getElementById('toastNotification');
     if (!toast) {
       toast = document.createElement('div');
@@ -395,11 +398,27 @@
       toast.className = 'toast-container';
       document.body.appendChild(toast);
     }
-    toast.textContent = msg;
+    if (toastTimeout) clearTimeout(toastTimeout);
+
+    if (undoCallback) {
+      toast.innerHTML = `
+        <span>${escapeHtml(msg)}</span>
+        <button class="toast-undo-btn" id="toastUndoBtn">Undo</button>
+      `;
+      const undoBtn = document.getElementById('toastUndoBtn');
+      if (undoBtn) {
+        undoBtn.onclick = () => {
+          undoCallback();
+          toast.classList.remove('show');
+        };
+      }
+    } else {
+      toast.textContent = msg;
+    }
     toast.classList.add('show');
-    setTimeout(() => {
+    toastTimeout = setTimeout(() => {
       toast.classList.remove('show');
-    }, 2400);
+    }, undoCallback ? 4500 : 2400);
   }
 
   // --- Statistics Calculation ---
@@ -681,9 +700,21 @@
     const subData = profile.subjects[activeChaptersSubject] || { chapters: [] };
 
     let html = `
-      <div style="margin-bottom: 20px;">
-        <h2 style="font-size: 24px; font-weight: 800; color: var(--text-primary);">${escapeHtml(activeChaptersSubject)} Chapters</h2>
-        <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Manage your chapter progress across custom preparation stages.</div>
+      <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+        <div>
+          <h2 style="font-size: 24px; font-weight: 800; color: var(--text-primary);">${escapeHtml(activeChaptersSubject)} Chapters</h2>
+          <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">
+            ${subData.chapters.length} active chapter${subData.chapters.length === 1 ? '' : 's'} • Add, cut or edit chapters anytime.
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button class="btn-add-chapter-top" onclick="window.UMANG_APP.openAddChapterModal('${escapeHtml(activeChaptersSubject)}')">
+            <span>+</span> Add Chapter
+          </button>
+          <button class="btn-manage-syllabus" onclick="window.UMANG_APP.openManageSyllabusModal('${escapeHtml(activeChaptersSubject)}')">
+            ⚙️ Manage Syllabus
+          </button>
+        </div>
       </div>
 
       <!-- Subject Pills -->
@@ -692,17 +723,20 @@
 
     SUBJECTS.forEach(sub => {
       const activeClass = sub === activeChaptersSubject ? 'active' : '';
-      html += `<button class="subject-pill ${activeClass}" onclick="window.UMANG_APP.setChaptersSubject('${escapeHtml(sub)}')">${escapeHtml(sub)}</button>`;
+      const count = profile.subjects[sub]?.chapters?.length || 0;
+      html += `<button class="subject-pill ${activeClass}" onclick="window.UMANG_APP.setChaptersSubject('${escapeHtml(sub)}')">${escapeHtml(sub)} (${count})</button>`;
     });
 
     html += `
       </div>
 
       <!-- Secondary Filter Pills -->
-      <div class="filter-pills">
-        <button class="filter-pill ${chaptersFilter === 'all' ? 'active' : ''}" onclick="window.UMANG_APP.setChaptersFilter('all')">All Chapters</button>
-        <button class="filter-pill ${chaptersFilter === 'incomplete' ? 'active' : ''}" onclick="window.UMANG_APP.setChaptersFilter('incomplete')">Incomplete</button>
-        <button class="filter-pill ${chaptersFilter === 'completed' ? 'active' : ''}" onclick="window.UMANG_APP.setChaptersFilter('completed')">Completed</button>
+      <div class="chapter-controls-row">
+        <div class="filter-pills" style="margin-bottom: 0;">
+          <button class="filter-pill ${chaptersFilter === 'all' ? 'active' : ''}" onclick="window.UMANG_APP.setChaptersFilter('all')">All Chapters (${subData.chapters.length})</button>
+          <button class="filter-pill ${chaptersFilter === 'incomplete' ? 'active' : ''}" onclick="window.UMANG_APP.setChaptersFilter('incomplete')">Incomplete</button>
+          <button class="filter-pill ${chaptersFilter === 'completed' ? 'active' : ''}" onclick="window.UMANG_APP.setChaptersFilter('completed')">Completed</button>
+        </div>
       </div>
 
       <!-- Chapter Accordions List -->
@@ -723,10 +757,24 @@
       });
     }
 
-    if (filteredChapters.length === 0) {
+    if (subData.chapters.length === 0) {
+      html += `
+        <div class="content-card" style="text-align: center; color: var(--text-secondary); padding: 40px 20px;">
+          <div style="font-size: 32px; margin-bottom: 12px;">📚</div>
+          <h3 style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">No chapters currently in ${escapeHtml(activeChaptersSubject)}</h3>
+          <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; max-width: 420px; margin-left: auto; margin-right: auto;">
+            You have cut all chapters from this subject. You can add custom chapters or restore CBSE standard chapters at any time.
+          </p>
+          <div class="btn-row" style="justify-content: center; max-width: 400px; margin: 0 auto;">
+            <button class="btn-primary" onclick="window.UMANG_APP.openAddChapterModal('${escapeHtml(activeChaptersSubject)}')">+ Add Chapter</button>
+            <button class="btn-secondary" onclick="window.UMANG_APP.restoreDefaultChapters('${escapeHtml(activeChaptersSubject)}')">↺ Restore CBSE Syllabus</button>
+          </div>
+        </div>
+      `;
+    } else if (filteredChapters.length === 0) {
       html += `
         <div class="content-card" style="text-align: center; color: var(--text-secondary); padding: 36px;">
-          No chapters match the selected filter.
+          No chapters match the selected filter (${escapeHtml(chaptersFilter)}).
         </div>
       `;
     } else {
@@ -754,6 +802,10 @@
         }
 
         html += `
+                </div>
+                <div class="chapter-header-actions" onclick="event.stopPropagation()">
+                  <button class="chapter-action-btn" onclick="window.UMANG_APP.openEditChapterModal('${escapeHtml(activeChaptersSubject)}', ${idx})" title="Rename chapter">✏️</button>
+                  <button class="chapter-action-btn delete" onclick="window.UMANG_APP.cutChapter('${escapeHtml(activeChaptersSubject)}', ${idx})" title="Cut / Remove chapter">✂️</button>
                 </div>
               </div>
             </div>
@@ -788,6 +840,18 @@
         });
 
         html += `
+              </div>
+
+              <!-- Quick Chapter Actions -->
+              <div class="chapter-body-actions">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                  <button class="chapter-body-btn" onclick="window.UMANG_APP.markAllStagesDone('${escapeHtml(activeChaptersSubject)}', ${idx})">✓ Mark All Done</button>
+                  <button class="chapter-body-btn" onclick="window.UMANG_APP.resetChapterStages('${escapeHtml(activeChaptersSubject)}', ${idx})">↺ Reset Stages</button>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                  <button class="chapter-body-btn" onclick="window.UMANG_APP.openEditChapterModal('${escapeHtml(activeChaptersSubject)}', ${idx})">✏️ Rename</button>
+                  <button class="chapter-body-btn danger" onclick="window.UMANG_APP.cutChapter('${escapeHtml(activeChaptersSubject)}', ${idx})">✂️ Cut Chapter</button>
+                </div>
               </div>
             </div>
           </div>
@@ -896,11 +960,12 @@
   function renderSettingsTab(profile) {
     const container = document.getElementById('tabContent');
     const currentStages = profile.customStages[activeSettingsStageSubject] || DEFAULT_STAGES[activeSettingsStageSubject];
+    const currentSubChapters = profile.subjects[activeSettingsChapterSubject]?.chapters || [];
 
     let html = `
       <div class="content-card">
         <div class="card-heading">Settings & Profile Management</div>
-        <div class="card-subheading">Edit profile details, update datesheet, and customize chapter stages.</div>
+        <div class="card-subheading">Edit profile details, update datesheet, cut & add chapters, and customize stages.</div>
 
         <!-- Student Name Edit -->
         <div class="form-group">
@@ -931,10 +996,65 @@
           <button class="btn-primary" style="margin-top: 18px;" onclick="window.UMANG_APP.saveSettingsDatesheet()">Save Datesheet</button>
         </div>
 
+        <!-- Manage Chapters & Syllabus (Cut / Add / Reorder) -->
+        <div style="margin-top: 32px; border-top: 1px solid var(--border-color); padding-top: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 4px;">
+            <h3 style="font-size: 16px; font-weight: 800; color: var(--text-primary);">Manage Chapters & Syllabus (Cut / Add)</h3>
+            <span style="font-size: 12px; font-weight: 700; color: var(--accent-cyan);">${currentSubChapters.length} Chapters Active</span>
+          </div>
+          <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Add new custom chapters, cut/delete omitted chapters, or reorder.</div>
+
+          <div class="pill-scroll-container">
+    `;
+
+    SUBJECTS.forEach(sub => {
+      const activeClass = sub === activeSettingsChapterSubject ? 'active' : '';
+      const count = profile.subjects[sub]?.chapters?.length || 0;
+      html += `<button class="subject-pill ${activeClass}" onclick="window.UMANG_APP.setSettingsChapterSubject('${escapeHtml(sub)}')">${escapeHtml(sub)} (${count})</button>`;
+    });
+
+    html += `
+          </div>
+
+          <div id="settingsChapterInputsList" style="margin-bottom: 14px;">
+    `;
+
+    if (currentSubChapters.length === 0) {
+      html += `
+        <div style="padding: 20px; text-align: center; color: var(--text-secondary); background: var(--bg-secondary); border-radius: var(--radius-sm); font-size: 13px;">
+          No chapters in ${escapeHtml(activeSettingsChapterSubject)}. Click "+ Add Chapter" or "Restore CBSE Syllabus" below.
+        </div>
+      `;
+    } else {
+      currentSubChapters.forEach((ch, chIdx) => {
+        html += `
+          <div class="chapter-manage-row">
+            <span style="font-size: 12px; font-weight: 700; color: var(--text-muted); width: 22px;">#${chIdx + 1}</span>
+            <input type="text" class="chapter-manage-input settings-chap-input" data-index="${chIdx}" value="${escapeHtml(ch.name)}" placeholder="Chapter Name" />
+            <div class="chapter-order-btns">
+              <button class="chapter-order-btn" ${chIdx === 0 ? 'disabled' : ''} onclick="window.UMANG_APP.moveSettingsChapter(${chIdx}, ${chIdx - 1})" title="Move up">▲</button>
+              <button class="chapter-order-btn" ${chIdx === currentSubChapters.length - 1 ? 'disabled' : ''} onclick="window.UMANG_APP.moveSettingsChapter(${chIdx}, ${chIdx + 1})" title="Move down">▼</button>
+            </div>
+            <button class="stage-delete-btn" onclick="window.UMANG_APP.deleteSettingsChapter(${chIdx})" title="Cut Chapter">✂️</button>
+          </div>
+        `;
+      });
+    }
+
+    html += `
+          </div>
+
+          <div class="btn-row" style="flex-wrap: wrap; gap: 8px;">
+            <button class="btn-secondary" onclick="window.UMANG_APP.addSettingsChapter()">+ Add New Chapter</button>
+            <button class="btn-secondary" onclick="window.UMANG_APP.restoreDefaultChapters('${escapeHtml(activeSettingsChapterSubject)}')">↺ Restore CBSE Syllabus</button>
+            <button class="btn-primary" style="flex: 1; min-width: 140px;" onclick="window.UMANG_APP.saveSettingsChapters()">Save Chapters</button>
+          </div>
+        </div>
+
         <!-- Customize Chapter Stages -->
         <div style="margin-top: 32px; border-top: 1px solid var(--border-color); padding-top: 24px;">
           <h3 style="font-size: 16px; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">Customize Chapter Stages (Variable per Subject)</h3>
-          <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Select a subject and add/remove or rename its stages.</div>
+          <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Select a subject and add/remove or rename its preparation stages.</div>
 
           <div class="pill-scroll-container">
     `;
@@ -963,13 +1083,15 @@
     html += `
           </div>
 
-          <button class="btn-add-stage" onclick="window.UMANG_APP.addSettingsStage()">+ Add Stage</button>
-          <button class="btn-primary" onclick="window.UMANG_APP.saveSettingsStages()">Save Custom Stages</button>
+          <div class="btn-row" style="margin-top: 10px;">
+            <button class="btn-secondary" onclick="window.UMANG_APP.addSettingsStage()">+ Add Stage</button>
+            <button class="btn-primary" style="flex: 1;" onclick="window.UMANG_APP.saveSettingsStages()">Save Custom Stages</button>
+          </div>
         </div>
 
         <!-- Profiles & Data Section -->
         <div style="margin-top: 32px; border-top: 1px solid var(--border-color); padding-top: 24px;">
-          <h3 style="font-size: 16px; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">Profiles & Data</h3>
+          <h3 style="font-size: 16px; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">Profiles & Data Backup</h3>
           <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Export backup JSON, restore backup, or reset data.</div>
 
           <div class="btn-row">
@@ -1354,6 +1476,461 @@
 
     setSettingsStageSubject(sub) {
       activeSettingsStageSubject = sub;
+      renderCurrentTab();
+    },
+
+    setSettingsChapterSubject(sub) {
+      activeSettingsChapterSubject = sub;
+      renderCurrentTab();
+    },
+
+    addSettingsChapter() {
+      const profile = getActiveProfile();
+      if (!profile) return;
+      if (!profile.subjects[activeSettingsChapterSubject]) {
+        profile.subjects[activeSettingsChapterSubject] = { chapters: [], examDate: new Date().toISOString().split('T')[0] };
+      }
+      const stagesList = profile.customStages[activeSettingsChapterSubject] || DEFAULT_STAGES[activeSettingsChapterSubject];
+      profile.subjects[activeSettingsChapterSubject].chapters.push({
+        name: 'New Chapter ' + (profile.subjects[activeSettingsChapterSubject].chapters.length + 1),
+        stageStates: stagesList.map(() => 0)
+      });
+      saveProfiles();
+      renderCurrentTab();
+    },
+
+    deleteSettingsChapter(idx) {
+      this.cutChapter(activeSettingsChapterSubject, idx);
+    },
+
+    moveSettingsChapter(fromIdx, toIdx) {
+      const profile = getActiveProfile();
+      if (!profile) return;
+      const chaps = profile.subjects[activeSettingsChapterSubject]?.chapters;
+      if (!chaps || toIdx < 0 || toIdx >= chaps.length) return;
+      const item = chaps.splice(fromIdx, 1)[0];
+      chaps.splice(toIdx, 0, item);
+      saveProfiles();
+      renderCurrentTab();
+    },
+
+    saveSettingsChapters() {
+      const profile = getActiveProfile();
+      if (!profile) return;
+      const inputs = document.querySelectorAll('.settings-chap-input');
+      const chaps = profile.subjects[activeSettingsChapterSubject]?.chapters || [];
+      inputs.forEach(input => {
+        const idx = parseInt(input.getAttribute('data-index'), 10);
+        const val = input.value.trim();
+        if (chaps[idx] && val) {
+          chaps[idx].name = val;
+        }
+      });
+      saveProfiles();
+      showToast('Chapters saved for ' + activeSettingsChapterSubject + '! ✓');
+      renderCurrentTab();
+    },
+
+    // --- Dynamic Chapter Addition & Cutting (No new profile needed) ---
+    openAddChapterModal(subject) {
+      const modal = document.getElementById('modalContainer');
+      modal.innerHTML = `
+        <div class="modal-overlay" onclick="window.UMANG_APP.closeModal(event)">
+          <div class="modal-content" onclick="event.stopPropagation()">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <h3 style="font-size: 18px; font-weight: 800; color: var(--text-primary);">Add Chapter to ${escapeHtml(subject)}</h3>
+              <button class="stage-delete-btn" style="background: none; border: none; color: var(--text-muted); font-size: 20px;" onclick="window.UMANG_APP.closeModal()">✕</button>
+            </div>
+            <div class="card-subheading" style="margin-bottom: 16px;">
+              Add any custom CBSE chapter, sub-topic, or unit to your study tracker.
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Chapter Name</label>
+              <input type="text" class="form-input" id="newChapterNameInput" placeholder="e.g. Surface Areas and Volumes" autofocus />
+            </div>
+
+            <div class="btn-row" style="margin-top: 24px;">
+              <button class="btn-secondary" onclick="window.UMANG_APP.closeModal()">Cancel</button>
+              <button class="btn-primary" style="flex: 1;" onclick="window.UMANG_APP.submitAddChapter('${escapeHtml(subject)}')">+ Add to Syllabus</button>
+            </div>
+          </div>
+        </div>
+      `;
+      setTimeout(() => {
+        const input = document.getElementById('newChapterNameInput');
+        if (input) {
+          input.focus();
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              window.UMANG_APP.submitAddChapter(subject);
+            }
+          });
+        }
+      }, 50);
+    },
+
+    submitAddChapter(subject) {
+      const input = document.getElementById('newChapterNameInput');
+      const name = input ? input.value.trim() : '';
+      if (!name) {
+        showToast('Please enter a chapter name.');
+        return;
+      }
+      this.quickAddChapter(subject, name);
+      this.closeModal();
+    },
+
+    quickAddChapter(subject, chapterName) {
+      const profile = getActiveProfile();
+      if (!profile) return;
+
+      if (!profile.subjects[subject]) {
+        profile.subjects[subject] = { chapters: [], examDate: new Date().toISOString().split('T')[0] };
+      }
+
+      const stagesList = profile.customStages[subject] || DEFAULT_STAGES[subject];
+      profile.subjects[subject].chapters.push({
+        name: chapterName,
+        stageStates: stagesList.map(() => 0)
+      });
+
+      saveProfiles();
+      showToast(`Added "${chapterName}" to ${subject}! ✨`);
+      renderCurrentTab();
+    },
+
+    openEditChapterModal(subject, chapterIdx) {
+      const profile = getActiveProfile();
+      if (!profile) return;
+      const ch = profile.subjects[subject]?.chapters[chapterIdx];
+      if (!ch) return;
+
+      const modal = document.getElementById('modalContainer');
+      modal.innerHTML = `
+        <div class="modal-overlay" onclick="window.UMANG_APP.closeModal(event)">
+          <div class="modal-content" onclick="event.stopPropagation()">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <h3 style="font-size: 18px; font-weight: 800; color: var(--text-primary);">Edit Chapter</h3>
+              <button class="stage-delete-btn" style="background: none; border: none; color: var(--text-muted); font-size: 20px;" onclick="window.UMANG_APP.closeModal()">✕</button>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Chapter Title (${escapeHtml(subject)})</label>
+              <input type="text" class="form-input" id="editChapterNameInput" value="${escapeHtml(ch.name)}" />
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 24px; flex-wrap: wrap;">
+              <button class="btn-danger" style="flex: 1;" onclick="window.UMANG_APP.cutChapter('${escapeHtml(subject)}', ${chapterIdx}); window.UMANG_APP.closeModal();">✂️ Cut / Delete</button>
+              <button class="btn-primary" style="flex: 1.4;" onclick="window.UMANG_APP.submitEditChapter('${escapeHtml(subject)}', ${chapterIdx})">Save Changes</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      setTimeout(() => {
+        const input = document.getElementById('editChapterNameInput');
+        if (input) {
+          input.focus();
+          input.select();
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              window.UMANG_APP.submitEditChapter(subject, chapterIdx);
+            }
+          });
+        }
+      }, 50);
+    },
+
+    submitEditChapter(subject, chapterIdx) {
+      const input = document.getElementById('editChapterNameInput');
+      const name = input ? input.value.trim() : '';
+      if (!name) {
+        showToast('Chapter name cannot be empty.');
+        return;
+      }
+      const profile = getActiveProfile();
+      if (!profile || !profile.subjects[subject]?.chapters[chapterIdx]) return;
+
+      profile.subjects[subject].chapters[chapterIdx].name = name;
+      saveProfiles();
+      this.closeModal();
+      showToast('Chapter renamed successfully! ✓');
+      renderCurrentTab();
+    },
+
+    // Cut / Remove chapter with instant Undo
+    cutChapter(subject, chapterIdx) {
+      const profile = getActiveProfile();
+      if (!profile) return;
+
+      const subData = profile.subjects[subject];
+      if (!subData || !subData.chapters[chapterIdx]) return;
+
+      const removedChapter = subData.chapters[chapterIdx];
+      lastDeletedChapterBackup = {
+        profileId: profile.id,
+        subject: subject,
+        chapter: JSON.parse(JSON.stringify(removedChapter)),
+        index: chapterIdx
+      };
+
+      subData.chapters.splice(chapterIdx, 1);
+      delete expandedChapters[`${subject}_${chapterIdx}`];
+
+      saveProfiles();
+      renderCurrentTab();
+
+      showToast(`Removed "${removedChapter.name}"`, () => {
+        window.UMANG_APP.undoCutChapter();
+      });
+    },
+
+    undoCutChapter() {
+      if (!lastDeletedChapterBackup) return;
+      const profile = getActiveProfile();
+      if (!profile || profile.id !== lastDeletedChapterBackup.profileId) return;
+
+      const subData = profile.subjects[lastDeletedChapterBackup.subject];
+      if (!subData) return;
+
+      const insertIdx = Math.min(lastDeletedChapterBackup.index, subData.chapters.length);
+      subData.chapters.splice(insertIdx, 0, lastDeletedChapterBackup.chapter);
+
+      const restoredName = lastDeletedChapterBackup.chapter.name;
+      lastDeletedChapterBackup = null;
+
+      saveProfiles();
+      renderCurrentTab();
+      showToast(`Restored "${restoredName}"! 🎉`);
+    },
+
+    // Mark all stages done for a chapter
+    markAllStagesDone(subject, chapterIdx) {
+      const profile = getActiveProfile();
+      if (!profile) return;
+      const ch = profile.subjects[subject]?.chapters[chapterIdx];
+      if (!ch) return;
+
+      const stagesList = profile.customStages[subject] || DEFAULT_STAGES[subject];
+      ch.stageStates = stagesList.map(() => 2);
+      updateStreak(profile);
+      saveProfiles();
+      showToast(`All stages completed for "${ch.name}"! 🚀`);
+      renderCurrentTab();
+    },
+
+    // Reset all stages to pending for a chapter
+    resetChapterStages(subject, chapterIdx) {
+      const profile = getActiveProfile();
+      if (!profile) return;
+      const ch = profile.subjects[subject]?.chapters[chapterIdx];
+      if (!ch) return;
+
+      const stagesList = profile.customStages[subject] || DEFAULT_STAGES[subject];
+      ch.stageStates = stagesList.map(() => 0);
+      saveProfiles();
+      showToast(`Reset stages for "${ch.name}"`);
+      renderCurrentTab();
+    },
+
+    // Restore standard CBSE Syllabus for subject
+    restoreDefaultChapters(subject) {
+      const profile = getActiveProfile();
+      if (!profile) return;
+      const classLevel = profile.classLevel || 'Class 10';
+      const defaultList = (SYLLABUS_DATA[classLevel] && SYLLABUS_DATA[classLevel][subject]) || [];
+
+      const modal = document.getElementById('modalContainer');
+      modal.innerHTML = `
+        <div class="modal-overlay" onclick="window.UMANG_APP.closeModal(event)">
+          <div class="modal-content" onclick="event.stopPropagation()">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <h3 style="font-size: 18px; font-weight: 800; color: var(--text-primary);">Restore CBSE ${escapeHtml(subject)} Syllabus</h3>
+              <button class="stage-delete-btn" style="background: none; border: none; color: var(--text-muted); font-size: 20px;" onclick="window.UMANG_APP.closeModal()">✕</button>
+            </div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 18px;">
+              This will restore all ${defaultList.length} standard CBSE ${escapeHtml(classLevel)} chapters for ${escapeHtml(subject)}. Any chapter progress you have already logged will be retained!
+            </p>
+            <div class="btn-row">
+              <button class="btn-secondary" onclick="window.UMANG_APP.closeModal()">Cancel</button>
+              <button class="btn-primary" style="flex: 1;" onclick="window.UMANG_APP.executeRestoreDefaultChapters('${escapeHtml(subject)}')">Restore ${defaultList.length} Chapters</button>
+            </div>
+          </div>
+        </div>
+      `;
+    },
+
+    executeRestoreDefaultChapters(subject) {
+      const profile = getActiveProfile();
+      if (!profile) return;
+      const classLevel = profile.classLevel || 'Class 10';
+      const defaultList = (SYLLABUS_DATA[classLevel] && SYLLABUS_DATA[classLevel][subject]) || [];
+      const stagesList = profile.customStages[subject] || DEFAULT_STAGES[subject];
+
+      if (!profile.subjects[subject]) {
+        profile.subjects[subject] = { chapters: [], examDate: new Date().toISOString().split('T')[0] };
+      }
+
+      const existingMap = {};
+      profile.subjects[subject].chapters.forEach(c => {
+        existingMap[c.name.trim().toLowerCase()] = c;
+      });
+
+      const newChapters = defaultList.map(chName => {
+        const found = existingMap[chName.trim().toLowerCase()];
+        if (found) {
+          return found;
+        }
+        return {
+          name: chName,
+          stageStates: stagesList.map(() => 0)
+        };
+      });
+
+      profile.subjects[subject].chapters = newChapters;
+      saveProfiles();
+      this.closeModal();
+      showToast(`Restored CBSE syllabus for ${subject} (${newChapters.length} chapters)! 📚`);
+      renderCurrentTab();
+    },
+
+    // Interactive Syllabus Manager modal (checkbox list of syllabus to cut/include)
+    openManageSyllabusModal(subject) {
+      const profile = getActiveProfile();
+      if (!profile) return;
+
+      const classLevel = profile.classLevel || 'Class 10';
+      const defaultList = (SYLLABUS_DATA[classLevel] && SYLLABUS_DATA[classLevel][subject]) || [];
+      const currentChapters = profile.subjects[subject]?.chapters || [];
+      const currentNamesSet = new Set(currentChapters.map(c => c.name));
+
+      // Combine standard CBSE chapters + any custom chapters user previously added
+      const allAvailable = [...defaultList];
+      currentChapters.forEach(c => {
+        if (!allAvailable.includes(c.name)) {
+          allAvailable.push(c.name);
+        }
+      });
+
+      let itemsHtml = '';
+      allAvailable.forEach((chName, idx) => {
+        const isChecked = currentNamesSet.has(chName);
+        const isCustom = !defaultList.includes(chName);
+        itemsHtml += `
+          <label class="syllabus-manage-item" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg-secondary); border-radius: var(--radius-sm); margin-bottom: 6px; cursor: pointer;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="checkbox" class="manage-syl-checkbox" data-name="${escapeHtml(chName)}" ${isChecked ? 'checked' : ''} style="width: 17px; height: 17px; accent-color: var(--accent-cyan);" />
+              <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">${escapeHtml(chName)}</span>
+            </div>
+            ${isCustom ? '<span style="font-size: 11px; background: var(--border-card); color: var(--accent-cyan); padding: 2px 6px; border-radius: 4px;">Custom</span>' : ''}
+          </label>
+        `;
+      });
+
+      const modal = document.getElementById('modalContainer');
+      modal.innerHTML = `
+        <div class="modal-overlay" onclick="window.UMANG_APP.closeModal(event)">
+          <div class="modal-content" onclick="event.stopPropagation()">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+              <h3 style="font-size: 18px; font-weight: 800; color: var(--text-primary);">Manage ${escapeHtml(subject)} Syllabus</h3>
+              <button class="stage-delete-btn" style="background: none; border: none; color: var(--text-muted); font-size: 20px;" onclick="window.UMANG_APP.closeModal()">✕</button>
+            </div>
+            <div class="card-subheading" style="margin-bottom: 14px;">
+              Uncheck any reduced/omitted chapters to cut them, or check to re-include them.
+            </div>
+
+            <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 12px;">
+              <button class="filter-pill active" onclick="window.UMANG_APP.toggleAllManageCheckboxes(true)" style="padding: 4px 10px;">Select All</button>
+              <button class="filter-pill" onclick="window.UMANG_APP.toggleAllManageCheckboxes(false)" style="padding: 4px 10px;">Deselect All</button>
+            </div>
+
+            <div id="manageSyllabusList" style="max-height: 280px; overflow-y: auto; margin-bottom: 16px; padding-right: 4px;">
+              ${itemsHtml}
+            </div>
+
+            <!-- Quick Add Chapter within modal -->
+            <div style="display: flex; gap: 8px; margin-bottom: 18px;">
+              <input type="text" class="form-input" id="manageModalNewChapterInput" placeholder="Add custom chapter..." style="padding: 8px 12px; font-size: 13px;" />
+              <button class="btn-secondary" style="white-space: nowrap; padding: 8px 14px;" onclick="window.UMANG_APP.addCustomToManageList()">+ Add</button>
+            </div>
+
+            <div class="btn-row">
+              <button class="btn-secondary" onclick="window.UMANG_APP.closeModal()">Cancel</button>
+              <button class="btn-primary" style="flex: 1;" onclick="window.UMANG_APP.saveManageSyllabus('${escapeHtml(subject)}')">Apply Changes</button>
+            </div>
+          </div>
+        </div>
+      `;
+    },
+
+    toggleAllManageCheckboxes(selectState) {
+      document.querySelectorAll('.manage-syl-checkbox').forEach(cb => {
+        cb.checked = selectState;
+      });
+    },
+
+    addCustomToManageList() {
+      const input = document.getElementById('manageModalNewChapterInput');
+      const val = input ? input.value.trim() : '';
+      if (!val) return;
+
+      const list = document.getElementById('manageSyllabusList');
+      if (!list) return;
+
+      const row = document.createElement('label');
+      row.className = 'syllabus-manage-item';
+      row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg-secondary); border-radius: var(--radius-sm); margin-bottom: 6px; cursor: pointer;';
+      row.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <input type="checkbox" class="manage-syl-checkbox" data-name="${escapeHtml(val)}" checked style="width: 17px; height: 17px; accent-color: var(--accent-cyan);" />
+          <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">${escapeHtml(val)}</span>
+        </div>
+        <span style="font-size: 11px; background: var(--border-card); color: var(--accent-cyan); padding: 2px 6px; border-radius: 4px;">Custom</span>
+      `;
+      list.appendChild(row);
+      input.value = '';
+      list.scrollTop = list.scrollHeight;
+    },
+
+    saveManageSyllabus(subject) {
+      const profile = getActiveProfile();
+      if (!profile) return;
+
+      const checkboxes = document.querySelectorAll('.manage-syl-checkbox');
+      const selectedNames = [];
+      checkboxes.forEach(cb => {
+        if (cb.checked) {
+          const name = cb.getAttribute('data-name');
+          if (name) selectedNames.push(name);
+        }
+      });
+
+      const existingChapters = profile.subjects[subject]?.chapters || [];
+      const stagesList = profile.customStages[subject] || DEFAULT_STAGES[subject];
+      const existingMap = {};
+      existingChapters.forEach(c => {
+        existingMap[c.name] = c;
+      });
+
+      const newChapters = selectedNames.map(name => {
+        if (existingMap[name]) {
+          return existingMap[name];
+        }
+        return {
+          name: name,
+          stageStates: stagesList.map(() => 0)
+        };
+      });
+
+      if (!profile.subjects[subject]) {
+        profile.subjects[subject] = { chapters: [], examDate: new Date().toISOString().split('T')[0] };
+      }
+      profile.subjects[subject].chapters = newChapters;
+
+      saveProfiles();
+      this.closeModal();
+      showToast(`Updated ${subject} syllabus (${newChapters.length} active)! ✓`);
       renderCurrentTab();
     },
 
