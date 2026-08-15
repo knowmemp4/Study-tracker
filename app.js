@@ -700,21 +700,9 @@
     const subData = profile.subjects[activeChaptersSubject] || { chapters: [] };
 
     let html = `
-      <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
-        <div>
-          <h2 style="font-size: 24px; font-weight: 800; color: var(--text-primary);">${escapeHtml(activeChaptersSubject)} Chapters</h2>
-          <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">
-            ${subData.chapters.length} active chapter${subData.chapters.length === 1 ? '' : 's'} • Add, cut or edit chapters anytime.
-          </div>
-        </div>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button class="btn-add-chapter-top" onclick="window.UMANG_APP.openAddChapterModal('${escapeHtml(activeChaptersSubject)}')">
-            <span>+</span> Add Chapter
-          </button>
-          <button class="btn-manage-syllabus" onclick="window.UMANG_APP.openManageSyllabusModal('${escapeHtml(activeChaptersSubject)}')">
-            ⚙️ Manage Syllabus
-          </button>
-        </div>
+      <div style="margin-bottom: 20px;">
+        <h2 style="font-size: 24px; font-weight: 800; color: var(--text-primary);">${escapeHtml(activeChaptersSubject)} Chapters</h2>
+        <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Manage your chapter progress across all preparation stages.</div>
       </div>
 
       <!-- Subject Pills -->
@@ -723,20 +711,17 @@
 
     SUBJECTS.forEach(sub => {
       const activeClass = sub === activeChaptersSubject ? 'active' : '';
-      const count = profile.subjects[sub]?.chapters?.length || 0;
-      html += `<button class="subject-pill ${activeClass}" onclick="window.UMANG_APP.setChaptersSubject('${escapeHtml(sub)}')">${escapeHtml(sub)} (${count})</button>`;
+      html += `<button class="subject-pill ${activeClass}" onclick="window.UMANG_APP.setChaptersSubject('${escapeHtml(sub)}')">${escapeHtml(sub)}</button>`;
     });
 
     html += `
       </div>
 
       <!-- Secondary Filter Pills -->
-      <div class="chapter-controls-row">
-        <div class="filter-pills" style="margin-bottom: 0;">
-          <button class="filter-pill ${chaptersFilter === 'all' ? 'active' : ''}" onclick="window.UMANG_APP.setChaptersFilter('all')">All Chapters (${subData.chapters.length})</button>
-          <button class="filter-pill ${chaptersFilter === 'incomplete' ? 'active' : ''}" onclick="window.UMANG_APP.setChaptersFilter('incomplete')">Incomplete</button>
-          <button class="filter-pill ${chaptersFilter === 'completed' ? 'active' : ''}" onclick="window.UMANG_APP.setChaptersFilter('completed')">Completed</button>
-        </div>
+      <div class="filter-pills">
+        <button class="filter-pill ${chaptersFilter === 'all' ? 'active' : ''}" onclick="window.UMANG_APP.setChaptersFilter('all')">All Chapters</button>
+        <button class="filter-pill ${chaptersFilter === 'incomplete' ? 'active' : ''}" onclick="window.UMANG_APP.setChaptersFilter('incomplete')">Incomplete</button>
+        <button class="filter-pill ${chaptersFilter === 'completed' ? 'active' : ''}" onclick="window.UMANG_APP.setChaptersFilter('completed')">Completed</button>
       </div>
 
       <!-- Chapter Accordions List -->
@@ -763,7 +748,7 @@
           <div style="font-size: 32px; margin-bottom: 12px;">📚</div>
           <h3 style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">No chapters currently in ${escapeHtml(activeChaptersSubject)}</h3>
           <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; max-width: 420px; margin-left: auto; margin-right: auto;">
-            You have cut all chapters from this subject. You can add custom chapters or restore CBSE standard chapters at any time.
+            You can add custom chapters or restore standard CBSE chapters anytime from Settings.
           </p>
           <div class="btn-row" style="justify-content: center; max-width: 400px; margin: 0 auto;">
             <button class="btn-primary" onclick="window.UMANG_APP.openAddChapterModal('${escapeHtml(activeChaptersSubject)}')">+ Add Chapter</button>
@@ -774,7 +759,7 @@
     } else if (filteredChapters.length === 0) {
       html += `
         <div class="content-card" style="text-align: center; color: var(--text-secondary); padding: 36px;">
-          No chapters match the selected filter (${escapeHtml(chaptersFilter)}).
+          No chapters match the selected filter.
         </div>
       `;
     } else {
@@ -803,15 +788,11 @@
 
         html += `
                 </div>
-                <div class="chapter-header-actions" onclick="event.stopPropagation()">
-                  <button class="chapter-action-btn" onclick="window.UMANG_APP.openEditChapterModal('${escapeHtml(activeChaptersSubject)}', ${idx})" title="Rename chapter">✏️</button>
-                  <button class="chapter-action-btn delete" onclick="window.UMANG_APP.cutChapter('${escapeHtml(activeChaptersSubject)}', ${idx})" title="Cut / Remove chapter">✂️</button>
-                </div>
               </div>
             </div>
 
             <div class="chapter-body">
-              <div class="stage-chips-title">Preparation Stages (${stagesList.length})</div>
+              <div class="stage-chips-title">${stagesList.length} Preparation Stages</div>
               <div class="stage-chips-grid">
         `;
 
